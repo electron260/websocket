@@ -42,7 +42,10 @@ import websockets
 import os
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-
+import struct
+import array
+import scipy.io.wavfile as wavf
+import wave
 
 root = os.path.dirname(__file__)
 
@@ -60,9 +63,21 @@ async def get(request: Request):
 @app.websocket("/wss")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    count=0
     while True:
+        count +=1
         data = await websocket.receive()
-        await websocket.send_text(f"Message text was: {data}")
+        bytes = data['bytes']
+        print(type(bytes))
+        print(len(bytes))
+        print(type(data))
+        # tuple_of_ints = struct.unpack('=3200h', bytes)
+        # print(tuple_of_ints)
+        array_of_s16s = array.array('h', bytes)
+        with wave.open("audio_filebin"+str(count)+".wav", "wb") as file:
+            file.setparams([1,2,16000,32000,'NONE','not compressed'])
+            file.writeframes(bytes)
+      
 
 if __name__ == '__main__':
 
