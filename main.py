@@ -55,6 +55,7 @@ app.mount('/static', StaticFiles(directory=os.path.join(root, 'static')), name='
 templates = Jinja2Templates(directory=os.path.join(root, 'templates'))
 
 
+
 @app.get("/")
 
 async def get(request: Request):
@@ -71,16 +72,16 @@ async def websocket_endpoint(websocket: WebSocket):
         print(type(bytes))
         print(len(bytes))
         print(type(data))
-        # tuple_of_ints = struct.unpack('=3200h', bytes)
-        # print(tuple_of_ints)
+
         array_of_s16s = array.array('h', bytes)
         with wave.open("audio_filebin"+str(count)+".wav", "wb") as file:
             file.setparams([1,2,16000,32000,'NONE','not compressed'])
             file.writeframes(bytes)
+  
       
 
 if __name__ == '__main__':
 
-    uvicorn.run('main:app', host='0.0.0.0', reload=True, log_level='debug',
+    uvicorn.run('main:app', host='192.168.1.67', reload=True, log_level='debug',
                 ssl_keyfile=os.path.join(root, 'key.pem'),
                 ssl_certfile=os.path.join(root, 'cert.pem'))

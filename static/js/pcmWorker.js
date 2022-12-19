@@ -3,7 +3,7 @@ const quantumSize = 128
 class TestProcessor extends AudioWorkletProcessor {
     constructor(options) {
       super()
-      this.quantaPerFrame = 250
+      this.quantaPerFrame = 125 // 125 * 128 = 16000 -> 1 second of audio
       this.quantaCount = 0
       this.frame = new Int16Array(quantumSize * this.quantaPerFrame)
     }

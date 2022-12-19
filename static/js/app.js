@@ -39,7 +39,7 @@ function streamaudio(){
   const pcmWorker = new AudioWorkletNode(audioContext, "pcmWorker" ,{outputChannelCount: [1]})
     source.connect(pcmWorker)
 
-    const conn = new WebSocket("wss://0.0.0.0:8000/wss")
+    const conn = new WebSocket("wss://192.168.1.67:8000/wss")
     console.log(conn)
     pcmWorker.port.onmessage = event => {
       console.log(event.data)
