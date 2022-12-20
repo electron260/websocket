@@ -1,38 +1,5 @@
-# from fastapi import FastAPI, WebSocket
-# from fastapi.responses import HTMLResponse
 
-# app = FastAPI()
-
-# html = """
-# <!DOCTYPE html>
-# <html lang="en">
-# <head>
-#     <meta charset="UTF-8">
-#     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-#     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-#     <title>Document</title>
-    
-# </head>
-# <body>
-#     <script src="./app.js"></script>
-    
-# </body>
-# </html>
-# """
-
-
-# @app.get("/")
-# async def get():
-#     return HTMLResponse(html)
-
-
-# @app.websocket("/ws")
-# async def websocket_endpoint(websocket: WebSocket):
-#     await websocket.accept()
-#     while True:
-#         data = await websocket.receive_text()
-#         await websocket.send_text(f"Message text was: {data}")
-
+from threading import Thread
 import logging
 import asyncio
 import uvicorn
@@ -47,7 +14,8 @@ import array
 import scipy.io.wavfile as wavf
 import wave
 import numpy as np
-
+import queue
+nbsamplefor1sec = 44100
 root = os.path.dirname(__file__)
 
 app = FastAPI()
@@ -55,6 +23,18 @@ app.mount('/static', StaticFiles(directory=os.path.join(root, 'static')), name='
 
 templates = Jinja2Templates(directory=os.path.join(root, 'templates'))
 
+count = 0
+
+
+def write_to_file(q):
+
+      while True: 
+            # Récupérez les données audio de la file d'attente
+            datarecup = queue.get()
+            print("queue size : ",q.qsize())
+            # Écrivez les données dans le fichier
+            wavf.write("audio"+str(count)+".wav", 44100, datarecup)
+            print("registered")
 
 
 @app.get("/")
@@ -64,27 +44,52 @@ async def get(request: Request):
 
 @app.websocket("/wss")
 async def websocket_endpoint(websocket: WebSocket):
+    q = queue.Queue()
+    
     await websocket.accept()
     count=0
-    #data = np.zeros(, dtype=np.float32)
 
+    t1 = Thread(target=write_to_file, args=(q,))
+    t1.start()
+
+
+    databuffer = np.zeros(nbsamplefor1sec, dtype=np.float32) 
     while True:
-        count +=1
+
         data = await websocket.receive()
+
         bytes = data['bytes']
-        print(type(bytes))
-        print(len(bytes))
-        print(type(data))
+       
         
-        print("array: ")
-        int16array = array.array('h', bytes).tolist()
-        print(int16array)
-        print(type(int16array))
-        print(len(int16array))
+ 
+        #float32array = array.array('f', bytes).tolist()
+
+        float32buffer = np.frombuffer(bytes, dtype=np.float32)
+        print("float32buffer : ",float32buffer)
+        databuffer = np.append(databuffer,float32buffer)
+        print("data : ",databuffer.size)
+        if databuffer.size > nbsamplefor1sec:
+            datarecup = databuffer[:nbsamplefor1sec]
+            print("datarecup : ",datarecup)
+            q.put(datarecup)
+            print("q : ",q.qsize())
+            databuffer = databuffer[nbsamplefor1sec:]
+            
+            #wavf.write("audio"+str(count)+".wav", 44100, datarecup)
+            
+
+
+async def register(count):
+
+    data = await q.get()
+    if data != None:
+            print("data : ",data)
+            wavf.write("audio"+str(count)+".wav", 44100, data)
+            count += 1
+            q.task_done()
+
        
 
-        float32array = int16array.astype(np.float32, order='C') / 32768.0
-      
 
 if __name__ == '__main__':
 

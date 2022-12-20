@@ -15,7 +15,7 @@ function streamaudio(){
   audio: {
     deviceId: "default",
     sampleRate: sampleRate,
-    sampleSize: 512,
+    //sampleSize: 512,
     channelCount: 1
   },
   video: false
@@ -36,7 +36,7 @@ function streamaudio(){
 
   audioContext.audioWorklet.addModule("static/js/Processor.js").then( () => {
   console.log(audioContext)
-  const pcmWorker = new AudioWorkletNode(audioContext, "process" ,{outputChannelCount: [1]})
+  const pcmWorker = new AudioWorkletNode(audioContext, "recorder.worklet" ,{outputChannelCount: [1]})
     source.connect(pcmWorker)
 
     const conn = new WebSocket("wss://192.168.1.67:8000/wss")
