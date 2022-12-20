@@ -46,6 +46,7 @@ import struct
 import array
 import scipy.io.wavfile as wavf
 import wave
+import numpy as np
 
 root = os.path.dirname(__file__)
 
@@ -65,6 +66,8 @@ async def get(request: Request):
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     count=0
+    #data = np.zeros(, dtype=np.float32)
+
     while True:
         count +=1
         data = await websocket.receive()
@@ -72,12 +75,15 @@ async def websocket_endpoint(websocket: WebSocket):
         print(type(bytes))
         print(len(bytes))
         print(type(data))
+        
+        print("array: ")
+        int16array = array.array('h', bytes).tolist()
+        print(int16array)
+        print(type(int16array))
+        print(len(int16array))
+       
 
-        array_of_s16s = array.array('h', bytes)
-        with wave.open("audio_filebin"+str(count)+".wav", "wb") as file:
-            file.setparams([1,2,16000,32000,'NONE','not compressed'])
-            file.writeframes(bytes)
-  
+        float32array = int16array.astype(np.float32, order='C') / 32768.0
       
 
 if __name__ == '__main__':
