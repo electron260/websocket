@@ -24,8 +24,8 @@ import time
 #Whisper 
 fp16= False
 LANGUAGE = "English"
-model = whisper.load_model("tiny.en", fp16=False)
-
+model = whisper.load_model("base.en")
+global mode 
 
 nbsamplefor1sec = 44100
 silence_treshold=0.009
@@ -39,18 +39,27 @@ templates = Jinja2Templates(directory=os.path.join(root, 'templates'))
 count = 0
 
 
-def write_to_file(q):
+def save(q : queue.Queue, username : str):
       count = 0
+      audio = np.zeros(nbsamplefor1sec, dtype=np.float32)
       while True: 
             # Récupérez les données audio de la file d'attente
-            datarecup = q.get()
+            audiorecup = q.get()
+            audio = np.append(audio,audiorecup)
             print("queue size : ",q.qsize())
             # Écrivez les données dans le fichier
-            wavf.write("audio"+str(count)+".wav", 44100, datarecup)
-            print("registered : ", count)
-            count += 1
+            noiseValue = np.abs(audio).mean()
+            debutnoise = np.abs(audio[:5000]).mean()
 
-def VoiceCommands(q : queue.Queue):
+            endnoise =  np.abs(audio[-5000:]).mean()
+            if noiseValue > silence_treshold and debutnoise < silence_treshold and endnoise < silence_treshold:
+
+                wavf.write("sample-"+username+"-"+str(count)+".wav", 44100, audio)
+                print("registered : ", count , "    noiseValue : ",noiseValue,"   debutnoise : ",debutnoise,"   endnoise : ",endnoise)
+                count += 1
+            audio = audio[-nbsamplefor1sec:]
+
+def VoiceCommands(q : queue.Queue ):
     WUWinference = CNNInference()
     wuwdata = np.zeros(nbsamplefor1sec, dtype=np.float32)
     count = 0
@@ -62,35 +71,35 @@ def VoiceCommands(q : queue.Queue):
         noiseValue = np.abs(wuwdata).mean()
         print("noiseValue ------> ",noiseValue)
         if noiseValue > silence_treshold:
-            wavf.write("audio"+str(count)+".wav", 44100, wuwdata)
+            #wavf.write("audio"+str(count)+".wav", 44100, wuwdata)
             new_trigger = WUWinference.get_prediction(torch.tensor(wuwdata))
+
             if new_trigger==1:
 
                     print('Wake Up Word triggered -> not activated')
 
             if new_trigger== 0:
-                SpeechToText(q,wuwdata)
-                
-
-        print("wuwdata : ",wuwdata.size)
-
-
+                SpeechToText(q)
         wuwdata = wuwdata[-nbsamplefor1sec:]
 
 
-def SpeechToText(q : queue.Queue, firstsample):
+def SpeechToText(q : queue.Queue):
     print("Wake Up Word triggered -> activated ")
     print(" ************ Speech To Text ************\nListening ...")
     counter = 0
-    datarecup = firstsample
+    datarecup = np.zeros(nbsamplefor1sec, dtype=np.float32)
     while counter < 5 :
         STTdata = q.get()
+        #wavf.write("STTdata-"+str(counter)+".wav", 44100, STTdata)
         datarecup = np.append(datarecup,STTdata)
-
+        #wavf.write("audio-"+str(counter)+".wav", 44100, datarecup)
         print("STT compteur : ",counter)
         counter += 1
     
     start = time.time()
+    print("transcribing ...")
+
+    wavf.write("STTsample.wav", 44100, datarecup)
     transcription = model.transcribe(datarecup, language="English")
 
     print("transcription : ",transcription["text"])
@@ -108,23 +117,28 @@ def SpeechToText(q : queue.Queue, firstsample):
 async def get(request: Request):
     return templates.TemplateResponse('index.html', {'request': request})
 
-@app.websocket("/wss")
+@app.websocket("/wss/save/{username}")
 async def websocket_endpoint(websocket: WebSocket):
+    
     q = queue.Queue()
     
     await websocket.accept()
+    username = websocket.path_params["username"]
+    t1 = Thread(target=save, args=(q,username,))
 
-    t1 = Thread(target=VoiceCommands, args=(q,))
+
+
+
     t1.start()
 
-
+    counter = 0
     databuffer = np.zeros(nbsamplefor1sec, dtype=np.float32) 
     while True:
-
+        counter +=1
         data = await websocket.receive()
 
         bytes = data['bytes']
-       
+
         
  
         #float32array = array.array('f', bytes).tolist()
@@ -133,17 +147,61 @@ async def websocket_endpoint(websocket: WebSocket):
         #print("float32buffer : ",float32buffer)
         databuffer = np.append(databuffer,float32buffer)
         #print("data : ",databuffer.size)
+
         if databuffer.size > nbsamplefor1sec:
-            datarecup = databuffer[:nbsamplefor1sec]
-            #print("datarecup : ",datarecup)
-            q.put(datarecup)
-            print("q size : ",q.qsize())
+            datafor1sec = databuffer[:nbsamplefor1sec]
+
+            q.put(datafor1sec)
             databuffer = databuffer[nbsamplefor1sec:]
+            print("q size : ",q.qsize())
+            #databuffer = databuffer[nbsamplefor1sec:]
+
             
             #wavf.write("audio"+str(count)+".wav", 44100, datarecup)
             
+@app.websocket("/wss/voicecommands")
+async def websocket_endpoint(websocket: WebSocket):
+    
+    q = queue.Queue()
+    
+    
+    await websocket.accept()
+
+    t1 = Thread(target=VoiceCommands, args=(q,))
 
 
+
+    t1.start()
+
+    counter = 0
+    databuffer = np.zeros(nbsamplefor1sec, dtype=np.float32) 
+    while True:
+        counter +=1
+        data = await websocket.receive()
+
+        bytes = data['bytes']
+
+        
+ 
+        #float32array = array.array('f', bytes).tolist()
+
+        float32buffer = np.frombuffer(bytes, dtype=np.float32)
+        #print("float32buffer : ",float32buffer)
+        databuffer = np.append(databuffer,float32buffer)
+        #print("data : ",databuffer.size)
+
+    
+        if databuffer.size > nbsamplefor1sec:
+            datafor1sec = databuffer[:nbsamplefor1sec]
+
+            q.put(datafor1sec)
+            databuffer = databuffer[nbsamplefor1sec:]
+            print("q size : ",q.qsize())
+            #databuffer = databuffer[nbsamplefor1sec:]
+
+            
+            #wavf.write("audio"+str(count)+".wav", 44100, datarecup)
+            
 
 
 

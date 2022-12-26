@@ -17,7 +17,17 @@
 
     <button id="record">record</button>
     <button id="stop">stop</button>
-    <button id="disconnect">disconnect</button>
+   
+    <label for="mode">Choose a stream mode:</label>
+
+    <select name="mode" id="mode">
+    <option value="Saving">Saving</option>
+    <option value="VoiceCommands">VoiceCommands</option>
+    </select>    
+    <label for="name">name for saving :</label>
+
+<input type="text" id="username" name="username" required
+       minlength="4" maxlength="10" size="10">
 
     <script async src="{{ url_for('static', path='js/app.js') }}"></script>
     
