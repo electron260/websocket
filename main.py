@@ -28,7 +28,7 @@ model = whisper.load_model("base.en")
 global mode 
 
 nbsamplefor1sec = 44100
-silence_treshold=0.009
+silence_treshold=0#.009
 root = os.path.dirname(__file__)
 
 app = FastAPI()
@@ -52,7 +52,7 @@ def save(q : queue.Queue, username : str):
             debutnoise = np.abs(audio[:5000]).mean()
 
             endnoise =  np.abs(audio[-5000:]).mean()
-            if noiseValue > silence_treshold and debutnoise < silence_treshold and endnoise < silence_treshold:
+            if noiseValue > silence_treshold :#and debutnoise < silence_treshold and endnoise < silence_treshold:
 
                 wavf.write("sample-"+username+"-"+str(count)+".wav", 44100, audio)
                 print("registered : ", count , "    noiseValue : ",noiseValue,"   debutnoise : ",debutnoise,"   endnoise : ",endnoise)
@@ -67,20 +67,24 @@ def VoiceCommands(q : queue.Queue ):
 
         count+=1
         data = q.get()
-        wuwdata = np.append(wuwdata,data)
-        noiseValue = np.abs(wuwdata).mean()
-        print("noiseValue ------> ",noiseValue)
-        if noiseValue > silence_treshold:
-            #wavf.write("audio"+str(count)+".wav", 44100, wuwdata)
-            new_trigger = WUWinference.get_prediction(torch.tensor(wuwdata))
+        print(data)
+        if (sum(data)!=0):
+            print("silence")
 
-            if new_trigger==1:
+            wuwdata = np.append(wuwdata,data)
+            noiseValue = np.abs(wuwdata).mean()
+            print("noiseValue ------> ",noiseValue)
+            if noiseValue > silence_treshold:
+                #wavf.write("audio"+str(count)+".wav", 44100, wuwdata)
+                new_trigger = WUWinference.get_prediction(torch.tensor(wuwdata))
 
-                    print('Wake Up Word triggered -> not activated')
+                if new_trigger==1:
 
-            if new_trigger== 0:
-                SpeechToText(q)
-        wuwdata = wuwdata[-nbsamplefor1sec:]
+                        print('Wake Up Word triggered -> not activated')
+
+                if new_trigger== 0:
+                    SpeechToText(q)
+            wuwdata = wuwdata[-nbsamplefor1sec:]
 
 
 def SpeechToText(q : queue.Queue):
@@ -100,7 +104,8 @@ def SpeechToText(q : queue.Queue):
     print("transcribing ...")
 
     wavf.write("STTsample.wav", 44100, datarecup)
-    transcription = model.transcribe(datarecup, language="English")
+    STTint16 = librosa.resample(datarecup, orig_sr = 44100, target_sr=16000)
+    transcription = model.transcribe(STTint16, language="English")
 
     print("transcription : ",transcription["text"])
     print("process time : ", time.time() - start)
@@ -207,6 +212,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == '__main__':
 
-    uvicorn.run('main:app', host='192.168.0.60', reload=True, log_level='debug',
+    uvicorn.run('main:app', host='172.21.72.189', reload=True, log_level='debug',
                 ssl_keyfile=os.path.join(root, 'key.pem'),
                 ssl_certfile=os.path.join(root, 'cert.pem'))
