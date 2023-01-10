@@ -1,44 +1,39 @@
 
 from threading import Thread
-import logging
-import asyncio
 import uvicorn
-from fastapi import  Cookie, Depends, FastAPI, Query, WebSocket, status, Request
+from fastapi import FastAPI, WebSocket,  Request
 from fastapi import WebSocket
-import websockets
 import os
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-import struct
-import array
 import scipy.io.wavfile as wavf
-import wave
 import numpy as np
 import queue
 import torch
 import librosa
 import whisper
 from VoiceCommands.CNN.inference import CNNInference
+from VoiceCommands.LSTM.inference import LSTMInference
 import time
 
 #Whisper 
+device = "cuda" if torch.cuda.is_available() else "cpu"
 fp16= False
 LANGUAGE = "English"
-model = whisper.load_model("base.en")
+model = whisper.load_model("base.en", device = device)
 global mode 
 
 nbsamplefor1sec = 44100
-silence_treshold=0#.009
+
+#sensibility
+silence_treshold=0.009
 root = os.path.dirname(__file__)
 
 app = FastAPI()
 app.mount('/static', StaticFiles(directory=os.path.join(root, 'static')), name='static')
-
 templates = Jinja2Templates(directory=os.path.join(root, 'templates'))
 
-count = 0
-
-
+#method to save samples for training
 def save(q : queue.Queue, username : str):
       count = 0
       audio = np.zeros(nbsamplefor1sec, dtype=np.float32)
@@ -59,36 +54,41 @@ def save(q : queue.Queue, username : str):
                 count += 1
             audio = audio[-nbsamplefor1sec:]
 
-def VoiceCommands(q : queue.Queue ):
-    WUWinference = CNNInference()
+def VoiceCommands(device : str, q : queue.Queue ):
+    print(" device :  ", device)
+    WUWinference = LSTMInference(device)
     wuwdata = np.zeros(nbsamplefor1sec, dtype=np.float32)
     count = 0
     while True:
 
         count+=1
         data = q.get()
-        print(data)
+     
         if (sum(data)!=0):
-            print("silence")
-
+           
             wuwdata = np.append(wuwdata,data)
             noiseValue = np.abs(wuwdata).mean()
-            print("noiseValue ------> ",noiseValue)
+            
+
             if noiseValue > silence_treshold:
+                print("noiseValue ------> ",noiseValue ,"   Wake Up Word triggered :")
                 #wavf.write("audio"+str(count)+".wav", 44100, wuwdata)
-                new_trigger = WUWinference.get_prediction(torch.tensor(wuwdata))
+                new_trigger = WUWinference.get_prediction(torch.tensor(wuwdata).to(device))
 
                 if new_trigger==1:
 
-                        print('Wake Up Word triggered -> not activated')
+                        print('Not activated')
 
                 if new_trigger== 0:
                     SpeechToText(q)
+            else :
+                print("silence")
+
             wuwdata = wuwdata[-nbsamplefor1sec:]
 
 
 def SpeechToText(q : queue.Queue):
-    print("Wake Up Word triggered -> activated ")
+    print("Activated ")
     print(" ************ Speech To Text ************\nListening ...")
     counter = 0
     datarecup = np.zeros(nbsamplefor1sec, dtype=np.float32)
@@ -109,12 +109,6 @@ def SpeechToText(q : queue.Queue):
 
     print("transcription : ",transcription["text"])
     print("process time : ", time.time() - start)
-    #STTint16 = librosa.resample(STTdata, orig_sr = 44100, target_sr=16000)
-    #start = time.time()
-    #result = model.transcribe(STTint16, language=LANGUAGE)
-    #print("process time : ", time.time() - start)
-    #STTresult = result["text"]
-    #print("transcription : ",STTresult)
 
 
 @app.get("/")
@@ -131,87 +125,58 @@ async def websocket_endpoint(websocket: WebSocket):
     username = websocket.path_params["username"]
     t1 = Thread(target=save, args=(q,username,))
 
-
-
-
     t1.start()
 
-    counter = 0
+  
     databuffer = np.zeros(nbsamplefor1sec, dtype=np.float32) 
     while True:
-        counter +=1
+      
         data = await websocket.receive()
-
         bytes = data['bytes']
 
-        
- 
         #float32array = array.array('f', bytes).tolist()
-
         float32buffer = np.frombuffer(bytes, dtype=np.float32)
-        #print("float32buffer : ",float32buffer)
         databuffer = np.append(databuffer,float32buffer)
-        #print("data : ",databuffer.size)
-
+    
         if databuffer.size > nbsamplefor1sec:
             datafor1sec = databuffer[:nbsamplefor1sec]
 
             q.put(datafor1sec)
             databuffer = databuffer[nbsamplefor1sec:]
-            print("q size : ",q.qsize())
-            #databuffer = databuffer[nbsamplefor1sec:]
 
-            
-            #wavf.write("audio"+str(count)+".wav", 44100, datarecup)
-            
 @app.websocket("/wss/voicecommands")
 async def websocket_endpoint(websocket: WebSocket):
     
     q = queue.Queue()
-    
-    
+
     await websocket.accept()
-
-    t1 = Thread(target=VoiceCommands, args=(q,))
-
-
+    t1 = Thread(target=VoiceCommands, args=(device, q,))
 
     t1.start()
 
-    counter = 0
+
     databuffer = np.zeros(nbsamplefor1sec, dtype=np.float32) 
     while True:
-        counter +=1
         data = await websocket.receive()
-
         bytes = data['bytes']
 
         
- 
         #float32array = array.array('f', bytes).tolist()
-
         float32buffer = np.frombuffer(bytes, dtype=np.float32)
-        #print("float32buffer : ",float32buffer)
         databuffer = np.append(databuffer,float32buffer)
-        #print("data : ",databuffer.size)
-
-    
+   
         if databuffer.size > nbsamplefor1sec:
-            datafor1sec = databuffer[:nbsamplefor1sec]
 
+            datafor1sec = databuffer[:nbsamplefor1sec]
+            #print("queue size : ",q.qsize())
             q.put(datafor1sec)
             databuffer = databuffer[nbsamplefor1sec:]
-            print("q size : ",q.qsize())
-            #databuffer = databuffer[nbsamplefor1sec:]
-
-            
-            #wavf.write("audio"+str(count)+".wav", 44100, datarecup)
-            
-
+       
+          
 
 
 if __name__ == '__main__':
 
-    uvicorn.run('main:app', host='172.21.72.189', reload=True, log_level='debug',
+    uvicorn.run('main:app', host='192.168.1.23', reload=True, log_level='info',
                 ssl_keyfile=os.path.join(root, 'key.pem'),
                 ssl_certfile=os.path.join(root, 'cert.pem'))
