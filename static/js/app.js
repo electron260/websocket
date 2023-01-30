@@ -49,16 +49,17 @@ function streamaudio(){
     const mode =  document.getElementById('mode').value;
     if (mode == 'Saving') {
       let username = document.getElementById('username').value;
-      conn = new WebSocket("wss://192.168.1.23:8000/wss/save/"+username)}
+      conn = new WebSocket("wss://172.21.72.159:8000/wss/save/"+username)}
     else if (mode == 'VoiceCommands') {
-      conn = new WebSocket("wss://192.168.1.23:8000/wss/voicecommands")}
+      conn = new WebSocket("wss://172.21.72.159:8000/wss/voicecommands")}
 
     console.log(conn)
-
     window.audioContext = audioContext;
     window.source = source;
     window.pcmWorker = pcmWorker;
     window.conn = conn;
+
+
 
     pcmWorker.port.onmessage = event => {
       console.log(event.data)

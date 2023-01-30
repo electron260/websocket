@@ -1,4 +1,3 @@
-
 from threading import Thread
 import uvicorn
 from fastapi import FastAPI, WebSocket,  Request
@@ -14,7 +13,13 @@ import librosa
 import whisper
 from VoiceCommands.CNN.inference import CNNInference
 from VoiceCommands.LSTM.inference import LSTMInference
+from VoiceCommands.Fuzzywuzzy.comparaison import Commands 
+from VoiceCommands.TTS.pytts import VocalFeedback
+from state import StateVoiceCommands
 import time
+
+
+STTRun = False
 
 #Whisper 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -23,10 +28,18 @@ LANGUAGE = "English"
 model = whisper.load_model("base.en", device = device)
 global mode 
 
+
+activation : str = True 
+mode : str = "" 
+#import GOSAI commands
+GOSAIcommands = Commands()
+#import Vocal feedbacks
+VocalReturn = VocalFeedback()
+
 nbsamplefor1sec = 44100
 
 #sensibility
-silence_treshold=0.009
+silence_treshold=0.0
 root = os.path.dirname(__file__)
 
 app = FastAPI()
@@ -49,67 +62,100 @@ def save(q : queue.Queue, username : str):
             endnoise =  np.abs(audio[-5000:]).mean()
             if noiseValue > silence_treshold :#and debutnoise < silence_treshold and endnoise < silence_treshold:
 
-                wavf.write("sample-"+username+"-"+str(count)+".wav", 44100, audio)
+                #wavf.write("sample-"+username+"-"+str(count)+".wav", 44100, audio)
                 print("registered : ", count , "    noiseValue : ",noiseValue,"   debutnoise : ",debutnoise,"   endnoise : ",endnoise)
                 count += 1
             audio = audio[-nbsamplefor1sec:]
 
-def VoiceCommands(device : str, q : queue.Queue ):
+def VoiceCommands(device : str, q : queue.Queue, autocalibration : str):
+    global STTRun
+
     print(" device :  ", device)
     WUWinference = LSTMInference(device)
-    wuwdata = np.zeros(nbsamplefor1sec, dtype=np.float32)
-    count = 0
-    while True:
+    wuwdata = np.zeros(0, dtype=np.float32)
+    #wuwdata = np.zeros(nbsamplefor1sec, dtype=np.float32)
+    counter = 0
+    while True & STTRun == False:
+        #print("valeur STT avant le get : ",STTRun)
+        if STTRun != True : 
+            data = q.get()
+            data,tps = data
+            #print("echantillon recup pour WUW")
 
-        count+=1
-        data = q.get()
-     
-        if (sum(data)!=0):
-           
+        if (sum(data)!=0) :
             wuwdata = np.append(wuwdata,data)
-            noiseValue = np.abs(wuwdata).mean()
+           
+            if wuwdata.size == 88200:
             
 
-            if noiseValue > silence_treshold:
-                print("noiseValue ------> ",noiseValue ,"   Wake Up Word triggered :")
-                #wavf.write("audio"+str(count)+".wav", 44100, wuwdata)
-                new_trigger = WUWinference.get_prediction(torch.tensor(wuwdata).to(device))
+                noiseValue = np.abs(wuwdata).mean()
 
-                if new_trigger==1:
+                if autocalibration==True:
+                    silence_treshold = noiseValue + 0.2*noiseValue
+                    print("silence_treshold : ",silence_treshold)
+                    autocalibration=False
 
-                        print('Not activated')
+                if noiseValue > silence_treshold:
+                    print("noiseValue ------> ",noiseValue ,"   Wake Up Word triggered :")
+                    #wavf.write("audio"+str(count)+".wav", 44100, wuwdata)
+                    new_trigger, prob = WUWinference.get_prediction(torch.tensor(wuwdata).to(device))
 
-                if new_trigger== 0:
-                    SpeechToText(q)
-            else :
-                print("silence")
+                    if new_trigger==1:
+
+                        print('Not activated -------> ',prob, "    Time Delay: ", time.time()-tps)
+                        
+                    if new_trigger== 0:
+                        SpeechToText(q, wuwdata, counter)
+                        counter += 1
+                        print('Activated -------> ',prob, "    Time Delay: ", time.time()-tps)
+                        #wavf.write("audio"+str(count)+".wav", 44100, wuwdata)
+                        wuwdata = np.zeros(0, dtype=np.float32)
+                else :
+                    print("silence    (",noiseValue,")")
 
             wuwdata = wuwdata[-nbsamplefor1sec:]
+            #count += 1
 
-
-def SpeechToText(q : queue.Queue):
+def SpeechToText(q : queue.Queue, wuwdata, counter : int):
+    global STTRun
     print("Activated ")
     print(" ************ Speech To Text ************\nListening ...")
-    counter = 0
-    datarecup = np.zeros(nbsamplefor1sec, dtype=np.float32)
-    while counter < 5 :
-        STTdata = q.get()
+    #print("STTRun True -> False")
+    STTRun = True
+    datarecup = wuwdata
+    count = 0 
+    while count < 3 :
+        STTdata,tps = q.get() 
+        
+        print("echantillon recup pour STT")
         #wavf.write("STTdata-"+str(counter)+".wav", 44100, STTdata)
         datarecup = np.append(datarecup,STTdata)
         #wavf.write("audio-"+str(counter)+".wav", 44100, datarecup)
-        print("STT compteur : ",counter)
-        counter += 1
+        print("STT compteur : ",count)
+        count += 1
+
+      
     
     start = time.time()
     print("transcribing ...")
 
-    wavf.write("STTsample.wav", 44100, datarecup)
+
+    wavf.write("STTsample-"+str(counter)+".wav", 44100, datarecup)
     STTint16 = librosa.resample(datarecup, orig_sr = 44100, target_sr=16000)
     transcription = model.transcribe(STTint16, language="English")
-
+    GOSAIcommands.comparaison(transcription["text"])
     print("transcription : ",transcription["text"])
+    counter +=1
+    
+    if len(GOSAIcommands.modeactive) != 0 :
+        print("Application mode : ",GOSAIcommands.modeactive)
+        VocalReturn.speak(GOSAIcommands.modeactive[1], GOSAIcommands.modeactive[0])
+        
     print("process time : ", time.time() - start)
+    GOSAIcommands.modeactive = []
+    #print("STTRun False -> True")
 
+    STTRun = False
 
 @app.get("/")
 
@@ -142,15 +188,17 @@ async def websocket_endpoint(websocket: WebSocket):
             datafor1sec = databuffer[:nbsamplefor1sec]
 
             q.put(datafor1sec)
-            databuffer = databuffer[nbsamplefor1sec:]
+            print("echantillon envoyé pour queue")
+            databuffer = databuffer[nbsamplefor1sec:] 
 
 @app.websocket("/wss/voicecommands")
 async def websocket_endpoint(websocket: WebSocket):
     
+    autocalibration = True
     q = queue.Queue()
 
     await websocket.accept()
-    t1 = Thread(target=VoiceCommands, args=(device, q,))
+    t1 = Thread(target=VoiceCommands, args=(device, q, autocalibration,))
 
     t1.start()
 
@@ -169,7 +217,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
             datafor1sec = databuffer[:nbsamplefor1sec]
             #print("queue size : ",q.qsize())
-            q.put(datafor1sec)
+            q.put((datafor1sec, time.time()))
+            #print("echantillon envoyé pour queue")
             databuffer = databuffer[nbsamplefor1sec:]
        
           
@@ -177,6 +226,15 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == '__main__':
 
-    uvicorn.run('main:app', host='192.168.1.23', reload=True, log_level='info',
-                ssl_keyfile=os.path.join(root, 'key.pem'),
-                ssl_certfile=os.path.join(root, 'cert.pem'))
+    uvicorn.run('main:app', host='172.21.72.159', reload=True, log_level='info',
+                ssl_keyfile=os.path.join(root, 'cert/key.pem'),
+                ssl_certfile=os.path.join(root, 'cert/cert.pem'))
+
+
+
+
+
+
+
+
+        
