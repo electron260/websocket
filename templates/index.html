@@ -10,11 +10,6 @@
 <body>
     <h1>GOSAI stream</h1>   
 
- <!-- <   <form action="" onsubmit="sendMessage(event)">  
-        
-        <button onclick="connect(event)">Connect</button>
-    </form>> -->
-
     <button id="record">record</button>
     <button id="stop">stop</button>
    
@@ -31,6 +26,10 @@
 
     <script async src="{{ url_for('static', path='js/app.js') }}"></script>
 
+    <div id="status">Listening : False</div>
+    <div id="trigger">Mode : None</div>
+
+    <img src="https://dvic.devinci.fr/api/v3/img/thumbnail/o5hp5pzpyq07fctmvdekp0817uxdd9.png" alt="Alternate text">
     
 </body>
 </html>

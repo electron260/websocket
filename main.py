@@ -15,22 +15,23 @@ from VoiceCommands.CNN.inference import CNNInference
 from VoiceCommands.LSTM.inference import LSTMInference
 from VoiceCommands.Fuzzywuzzy.comparaison import Commands 
 from VoiceCommands.TTS.pytts import VocalFeedback
-from state import StateVoiceCommands
 import time
 
+#TEST 
+from transformers import WhisperProcessor, WhisperForConditionalGeneration
+processor = WhisperProcessor.from_pretrained("openai/whisper-small.en")
+model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-small.en")
+model.config.forced_decoder_ids = None
 
-STTRun = False
+
+Info = {"Listening": False, "Mode": "None"}
 
 #Whisper 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-fp16= False
-LANGUAGE = "English"
-model = whisper.load_model("base.en", device = device)
-global mode 
+# fp16= False
+# LANGUAGE = "English"
+# model = whisper.load_model("base.en", device = device)
 
-
-activation : str = True 
-mode : str = "" 
 #import GOSAI commands
 GOSAIcommands = Commands()
 #import Vocal feedbacks
@@ -68,16 +69,17 @@ def save(q : queue.Queue, username : str):
             audio = audio[-nbsamplefor1sec:]
 
 def VoiceCommands(device : str, q : queue.Queue, autocalibration : str):
-    global STTRun
+    global Info
+
 
     print(" device :  ", device)
     WUWinference = LSTMInference(device)
     wuwdata = np.zeros(0, dtype=np.float32)
     #wuwdata = np.zeros(nbsamplefor1sec, dtype=np.float32)
     counter = 0
-    while True & STTRun == False:
+    while True & Info["Listening"] == False:
         #print("valeur STT avant le get : ",STTRun)
-        if STTRun != True : 
+        if Info["Listening"] != True : 
             data = q.get()
             data,tps = data
             #print("echantillon recup pour WUW")
@@ -87,8 +89,9 @@ def VoiceCommands(device : str, q : queue.Queue, autocalibration : str):
            
             if wuwdata.size == 88200:
             
-
+               
                 noiseValue = np.abs(wuwdata).mean()
+              
 
                 if autocalibration==True:
                     silence_treshold = noiseValue + 0.2*noiseValue
@@ -117,11 +120,15 @@ def VoiceCommands(device : str, q : queue.Queue, autocalibration : str):
             #count += 1
 
 def SpeechToText(q : queue.Queue, wuwdata, counter : int):
-    global STTRun
+    global Info , SendMessage
+
+
     print("Activated ")
     print(" ************ Speech To Text ************\nListening ...")
     #print("STTRun True -> False")
-    STTRun = True
+    Info["Listening"] = True
+    SendMessage = True
+
     datarecup = wuwdata
     count = 0 
     while count < 3 :
@@ -135,32 +142,45 @@ def SpeechToText(q : queue.Queue, wuwdata, counter : int):
         count += 1
 
       
-    
+    Info["Listening"] = False
+    SendMessage = True
+    time.sleep(3)
+
     start = time.time()
     print("transcribing ...")
 
 
-    wavf.write("STTsample-"+str(counter)+".wav", 44100, datarecup)
+    # wavf.write("STTsample-"+str(counter)+".wav", 44100, datarecup)
     STTint16 = librosa.resample(datarecup, orig_sr = 44100, target_sr=16000)
-    transcription = model.transcribe(STTint16, language="English")
-    GOSAIcommands.comparaison(transcription["text"])
-    print("transcription : ",transcription["text"])
+    # transcription = model.transcribe(STTint16, language="English")
+    input_features = processor(STTint16, sampling_rate=16000, return_tensors="pt").input_features 
+    #print("input_features : ",input_features)
+    predicted_ids = model.generate(input_features)
+    #print("predicted_ids : ",predicted_ids)
+    transcription = processor.batch_decode(predicted_ids, skip_special_tokens=True)
+    
+    GOSAIcommands.comparaison(transcription)
+    print("transcription : ",transcription)
     counter +=1
     
     if len(GOSAIcommands.modeactive) != 0 :
         print("Application mode : ",GOSAIcommands.modeactive)
         VocalReturn.speak(GOSAIcommands.modeactive[1], GOSAIcommands.modeactive[0])
+
+        Info["Mode"] = GOSAIcommands.modeactive[1] + " " + GOSAIcommands.modeactive[0]
+        SendMessage = True
         
     print("process time : ", time.time() - start)
     GOSAIcommands.modeactive = []
     #print("STTRun False -> True")
 
-    STTRun = False
+    
 
 @app.get("/")
 
 async def get(request: Request):
     return templates.TemplateResponse('index.html', {'request': request})
+
 
 @app.websocket("/wss/save/{username}")
 async def websocket_endpoint(websocket: WebSocket):
@@ -193,7 +213,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.websocket("/wss/voicecommands")
 async def websocket_endpoint(websocket: WebSocket):
-    
+
+    global Info , SendMessage
+    SendMessage = True
     autocalibration = True
     q = queue.Queue()
 
@@ -203,11 +225,17 @@ async def websocket_endpoint(websocket: WebSocket):
     t1.start()
 
 
+
     databuffer = np.zeros(nbsamplefor1sec, dtype=np.float32) 
     while True:
+        if SendMessage == True:
+            #send websocket to client to display "listening"
+            await websocket.send_json(Info)
+            print("message sent to client : ", Info)
+            SendMessage = False
+
         data = await websocket.receive()
         bytes = data['bytes']
-
         
         #float32array = array.array('f', bytes).tolist()
         float32buffer = np.frombuffer(bytes, dtype=np.float32)
@@ -226,7 +254,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == '__main__':
 
-    uvicorn.run('main:app', host='172.21.72.159', reload=True, log_level='info',
+    uvicorn.run('main:app', host='172.21.72.161', reload=True, log_level='info',
                 ssl_keyfile=os.path.join(root, 'cert/key.pem'),
                 ssl_certfile=os.path.join(root, 'cert/cert.pem'))
 
