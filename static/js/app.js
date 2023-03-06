@@ -46,12 +46,12 @@ function streamaudio(){
   console.log(audioContext)
   pcmWorker = new AudioWorkletNode(audioContext, "audio-buffer.worklet" ,{outputChannelCount: [1]})
     source.connect(pcmWorker)
-    const mode =  document.getElementById('mode').value;
-    if (mode == 'Saving') {
-      let username = document.getElementById('username').value;
-      conn = new WebSocket("wss://172.21.72.161:8000/wss/save/"+username)}
-    else if (mode == 'VoiceCommands') {
-      conn = new WebSocket("wss://172.21.72.161:8000/wss/voicecommands")}
+    // const mode =  document.getElementById('mode').value;
+    // if (mode == 'Saving') {
+    //   let username = document.getElementById('username').value;
+    //   conn = new WebSocket("wss://172.21.72.141:8000/wss/save/"+username)}
+    // else if (mode == 'VoiceCommands') {
+    conn = new WebSocket("wss://192.168.1.51:8000/wss/voicecommands")
 
     console.log(conn)
     window.audioContext = audioContext;
@@ -92,8 +92,6 @@ function streamaudio(){
 
 
 document.getElementById('record').addEventListener('click', function () {
-  
-
   console.log('record');
   streamaudio()  
 });

@@ -18,19 +18,20 @@ from VoiceCommands.TTS.pytts import VocalFeedback
 import time
 
 #TEST 
-from transformers import WhisperProcessor, WhisperForConditionalGeneration
-processor = WhisperProcessor.from_pretrained("openai/whisper-small.en")
-model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-small.en")
-model.config.forced_decoder_ids = None
+# from transformers import WhisperProcessor, WhisperForConditionalGeneration
+# processor = WhisperProcessor.from_pretrained("openai/whisper-small.en")
+# model1 = WhisperForConditionalGeneration.from_pretrained("openai/whisper-small.en")
+# model1.config.forced_decoder_ids = None
 
 
 Info = {"Listening": False, "Mode": "None"}
 
 #Whisper 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-# fp16= False
-# LANGUAGE = "English"
-# model = whisper.load_model("base.en", device = device)
+#device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cpu"
+fp16= False
+LANGUAGE = "English"
+model = whisper.load_model("small.en", device = device)
 
 #import GOSAI commands
 GOSAIcommands = Commands()
@@ -45,7 +46,11 @@ root = os.path.dirname(__file__)
 
 app = FastAPI()
 app.mount('/static', StaticFiles(directory=os.path.join(root, 'static')), name='static')
+#templates = Jinja2Templates(directory=os.path.join(root, 'templates'))
+
+#add the html and css files to the templates folder
 templates = Jinja2Templates(directory=os.path.join(root, 'templates'))
+
 
 #method to save samples for training
 def save(q : queue.Queue, username : str):
@@ -84,7 +89,8 @@ def VoiceCommands(device : str, q : queue.Queue, autocalibration : str):
             data,tps = data
             #print("echantillon recup pour WUW")
 
-        if (sum(data)!=0) :
+    
+        if (sum(data)!=0) and time.time() - tps < 1.5:
             wuwdata = np.append(wuwdata,data)
            
             if wuwdata.size == 88200:
@@ -101,7 +107,7 @@ def VoiceCommands(device : str, q : queue.Queue, autocalibration : str):
                 if noiseValue > silence_treshold:
                     print("noiseValue ------> ",noiseValue ,"   Wake Up Word triggered :")
                     #wavf.write("audio"+str(count)+".wav", 44100, wuwdata)
-                    new_trigger, prob = WUWinference.get_prediction(torch.tensor(wuwdata).to(device))
+                    new_trigger, prob = WUWinference.get_prediction(device,torch.tensor(wuwdata).to(device))
 
                     if new_trigger==1:
 
@@ -144,23 +150,28 @@ def SpeechToText(q : queue.Queue, wuwdata, counter : int):
       
     Info["Listening"] = False
     SendMessage = True
-    time.sleep(3)
 
-    start = time.time()
+
+    
     print("transcribing ...")
 
 
     # wavf.write("STTsample-"+str(counter)+".wav", 44100, datarecup)
     STTint16 = librosa.resample(datarecup, orig_sr = 44100, target_sr=16000)
-    # transcription = model.transcribe(STTint16, language="English")
-    input_features = processor(STTint16, sampling_rate=16000, return_tensors="pt").input_features 
-    #print("input_features : ",input_features)
-    predicted_ids = model.generate(input_features)
-    #print("predicted_ids : ",predicted_ids)
-    transcription = processor.batch_decode(predicted_ids, skip_special_tokens=True)
-    
+
+    # # transcription = model.transcribe(STTint16, language="English")
+    # input_features = processor(STTint16, sampling_rate=16000, return_tensors="pt").input_features 
+    # #print("input_features : ",input_features)
+    # predicted_ids = model1.generate(input_features)
+    # #print("predicted_ids : ",predicted_ids)
+    # transcription2 = processor.batch_decode(predicted_ids, skip_special_tokens=True)
+
+
+    startWhisper = time.time()
+    transcription = model.transcribe(STTint16, language="English")
+    print("Whisper time : ", time.time() - startWhisper)
     GOSAIcommands.comparaison(transcription)
-    print("transcription : ",transcription)
+    print("transcription : ",transcription["text"])
     counter +=1
     
     if len(GOSAIcommands.modeactive) != 0 :
@@ -170,7 +181,7 @@ def SpeechToText(q : queue.Queue, wuwdata, counter : int):
         Info["Mode"] = GOSAIcommands.modeactive[1] + " " + GOSAIcommands.modeactive[0]
         SendMessage = True
         
-    print("process time : ", time.time() - start)
+    print("process time : ", time.time() - startWhisper)
     GOSAIcommands.modeactive = []
     #print("STTRun False -> True")
 
@@ -254,7 +265,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == '__main__':
 
-    uvicorn.run('main:app', host='172.21.72.161', reload=True, log_level='info',
+    uvicorn.run('main:app', host='192.168.1.51', reload=True, log_level='info',
                 ssl_keyfile=os.path.join(root, 'cert/key.pem'),
                 ssl_certfile=os.path.join(root, 'cert/cert.pem'))
 

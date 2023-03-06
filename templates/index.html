@@ -1,35 +1,47 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
     
+    <link rel="stylesheet" href="/static/css/style.css">
+
 </head>
+
 <body>
-    <h1>GOSAI stream</h1>   
-
-    <button id="record">record</button>
-    <button id="stop">stop</button>
-   
-    <label for="mode">Choose a stream mode:</label>
-
-    <select name="mode" id="mode">
-    <option value="Saving">Saving</option>
-    <option value="VoiceCommands">VoiceCommands</option>
-    </select>    
-    <label for="name">name for saving :</label>
-
-<input type="text" id="username" name="username" required
-       minlength="4" maxlength="10" size="10">
-
-    <script async src="{{ url_for('static', path='js/app.js') }}"></script>
-
+    <h1>GOSAI stream</h1>
+    <div class="buttons">
+        <!-- <button class="button-64" id="record">record</button> -->
+        <button class="button-64" id="record" role="button"><span class="text">Record</span></button>
+        <!-- <button class="button-64" id="stop">stop</button> -->
+        <br>
+        <button class="button-64" id="stop" role="button"><span class="text">Stop</span></button>
+    </div>
+    <br>
+    <h3>
     <div id="status">Listening : False</div>
     <div id="trigger">Mode : None</div>
-
-    <img src="https://dvic.devinci.fr/api/v3/img/thumbnail/o5hp5pzpyq07fctmvdekp0817uxdd9.png" alt="Alternate text">
+    </h3>
+    <!-- <h2>
+        <label for="mode">Choose a stream mode:</label>
     
+        <select name="mode" id="mode">
+            <option value="Saving">Saving</option>
+            <option value="VoiceCommands">VoiceCommands</option>
+        </select>
+        <label for="name">name for saving :</label>
+    
+        <input type="text" id="username" name="username" required minlength="4" maxlength="10" size="10">
+    
+        <script async src="{{ url_for('static', path='js/app.js') }}"></script>
+    </h2> -->
+    <script async src="{{ url_for('static', path='js/app.js') }}"></script>
+    <img id="GOSAItree" src="https://dvic.devinci.fr/api/v3/img/thumbnail/o5hp5pzpyq07fctmvdekp0817uxdd9.png"
+        alt="Alternate text">
+
 </body>
+
 </html>
