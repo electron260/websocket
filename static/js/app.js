@@ -1,4 +1,4 @@
-const sampleRate = 44100
+const sampleRate = 16000;
 
 
 
@@ -23,8 +23,8 @@ function streamaudio(){
   audio: {
     deviceId: "default",
     sampleRate: sampleRate,
-    //sampleSize: 512,
     channelCount: 1
+
   },
   video: false
 }).then( (stream) => {
@@ -73,10 +73,14 @@ function streamaudio(){
 
 
     pcmWorker.port.onmessage = event => {
-      console.log(event.data)
-      conn.send(event.data)}
+      //console.log(event.data)
+      conn.send(event.data)
+      //send the current time to the server to sync the audio in a json 
+      //conn.send(JSON.stringify(new Date().getTime()))
+      //console.log("time : ",JSON.stringify(new Date().getTime()))}
+
     pcmWorker.port.start()
-  })
+  }})
 
 
 

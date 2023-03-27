@@ -11,11 +11,10 @@ import queue
 import torch
 import librosa
 import whisper
-from VoiceCommands.CNN.inference import CNNInference
 from VoiceCommands.LSTM.inference import LSTMInference
 from VoiceCommands.Fuzzywuzzy.comparaison import Commands 
-from VoiceCommands.TTS.pytts import VocalFeedback
 import time
+import json
 
 #TEST 
 # from transformers import WhisperProcessor, WhisperForConditionalGeneration
@@ -36,9 +35,8 @@ model = whisper.load_model("small.en", device = device)
 #import GOSAI commands
 GOSAIcommands = Commands()
 #import Vocal feedbacks
-VocalReturn = VocalFeedback()
 
-nbsamplefor1sec = 44100
+nbsamplefor1sec = 16000
 
 #sensibility
 silence_treshold=0.0
@@ -230,37 +228,69 @@ async def websocket_endpoint(websocket: WebSocket):
     autocalibration = True
     q = queue.Queue()
 
-    await websocket.accept()
-    t1 = Thread(target=VoiceCommands, args=(device, q, autocalibration,))
+    #start_recording = time.time()
 
-    t1.start()
+    start = time.time()
+    compteur = 0 
+
+    await websocket.accept()
+    # t1 = Thread(target=VoiceCommands, args=(device, q, autocalibration,))
+
+    # t1.start()
 
 
 
     databuffer = np.zeros(nbsamplefor1sec, dtype=np.float32) 
-    while True:
-        if SendMessage == True:
-            #send websocket to client to display "listening"
-            await websocket.send_json(Info)
-            print("message sent to client : ", Info)
-            SendMessage = False
+    with open('debit.txt', 'w') as f:
+        while True:
+            if SendMessage == True:
+                #send websocket to client to display "listening"
+                await websocket.send_json(Info)
+                print("message sent to client : ", Info)
+                SendMessage = False
 
-        data = await websocket.receive()
-        bytes = data['bytes']
-        
-        #float32array = array.array('f', bytes).tolist()
-        float32buffer = np.frombuffer(bytes, dtype=np.float32)
-        databuffer = np.append(databuffer,float32buffer)
-   
-        if databuffer.size > nbsamplefor1sec:
+            data = await websocket.receive()
+            #print('type ' , type(data))
+            #print("message recu : ",data)
+            # if 'text' in data.keys():
+            #         data = data['text']
+                    #print(data)
+                    #print("received time : ", float(data)/1000)
+                    #print("time server : ", time.time())
+                    #delay_time = time.time() - float(data)/1000
+                    #Write this delay_time in a file delay.txt
+            compteur += 1 
+            if time.time()  - start >= 60 :  
+                    print("temps : ", time.time()-start, "    competeur : " , compteur)
+                    f.write(str(compteur)+'\n')#+','+str(time.time()-start_recording)+'\n')
+                    start += 60
+                    compteur = 0
 
-            datafor1sec = databuffer[:nbsamplefor1sec]
-            #print("queue size : ",q.qsize())
-            q.put((datafor1sec, time.time()))
-            #print("echantillon envoyé pour queue")
-            databuffer = databuffer[nbsamplefor1sec:]
-       
-          
+                
+
+
+
+                    
+            else : 
+
+                bytes = data['bytes']
+                
+                #print("bytes : ",bytes)
+                #bytes = data['bytes']
+                #float32array = array.array('f', bytes).tolist()
+                float32buffer = np.frombuffer(bytes, dtype=np.float32)
+                print(float32buffer.size)
+                databuffer = np.append(databuffer,float32buffer)
+
+                if databuffer.size > nbsamplefor1sec:
+
+                    datafor1sec = databuffer[:nbsamplefor1sec]
+                    #print("queue size : ",q.qsize())
+                    q.put((datafor1sec, time.time()))
+                    #print("echantillon envoyé pour queue")
+                    databuffer = databuffer[nbsamplefor1sec:]
+            
+            
 
 
 if __name__ == '__main__':
