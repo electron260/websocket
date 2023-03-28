@@ -11,3 +11,5 @@ SERVER :
 main.py : using FastAPI, receiving the audio from the web client and using the VoiceCommands repo to process the audio
 
 
+# Test 
+Some unit test have been made in the Voice Commands submodule
