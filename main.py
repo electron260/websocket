@@ -15,6 +15,8 @@ from VoiceCommands.LSTM.inference import LSTMInference
 from VoiceCommands.Fuzzywuzzy.comparaison import Commands 
 import time
 import json
+#make unit test for each method or endpoints
+import unittest
 
 #TEST 
 # from transformers import WhisperProcessor, WhisperForConditionalGeneration
@@ -49,7 +51,7 @@ app.mount('/static', StaticFiles(directory=os.path.join(root, 'static')), name='
 #add the html and css files to the templates folder
 templates = Jinja2Templates(directory=os.path.join(root, 'templates'))
 
-
+print('test')
 #method to save samples for training
 def save(q : queue.Queue, username : str):
       count = 0
@@ -105,14 +107,14 @@ def VoiceCommands(device : str, q : queue.Queue, autocalibration : str):
                 if noiseValue > silence_treshold:
                     print("noiseValue ------> ",noiseValue ,"   Wake Up Word triggered :")
                     #wavf.write("audio"+str(count)+".wav", 44100, wuwdata)
-                    new_trigger, prob = WUWinference.get_prediction(device,torch.tensor(wuwdata).to(device))
+                    new_trigger, prob = WUWinference.get_prediction(torch.tensor(wuwdata).to(device))
 
                     if new_trigger==1:
-
+                            
                         print('Not activated -------> ',prob, "    Time Delay: ", time.time()-tps)
                         
                     if new_trigger== 0:
-                        SpeechToText(q, wuwdata, counter)
+                        SpeechToText(q, wuwdata)
                         counter += 1
                         print('Activated -------> ',prob, "    Time Delay: ", time.time()-tps)
                         #wavf.write("audio"+str(count)+".wav", 44100, wuwdata)
@@ -123,7 +125,7 @@ def VoiceCommands(device : str, q : queue.Queue, autocalibration : str):
             wuwdata = wuwdata[-nbsamplefor1sec:]
             #count += 1
 
-def SpeechToText(q : queue.Queue, wuwdata, counter : int):
+def SpeechToText(q : queue.Queue, wuwdata, resample = True, debug = False):
     global Info , SendMessage
 
 
@@ -153,9 +155,10 @@ def SpeechToText(q : queue.Queue, wuwdata, counter : int):
     
     print("transcribing ...")
 
-
+    
     # wavf.write("STTsample-"+str(counter)+".wav", 44100, datarecup)
-    STTint16 = librosa.resample(datarecup, orig_sr = 44100, target_sr=16000)
+    if resample == True:
+        datarecup = librosa.resample(datarecup, orig_sr = 44100, target_sr=16000)
 
     # # transcription = model.transcribe(STTint16, language="English")
     # input_features = processor(STTint16, sampling_rate=16000, return_tensors="pt").input_features 
@@ -166,22 +169,29 @@ def SpeechToText(q : queue.Queue, wuwdata, counter : int):
 
 
     startWhisper = time.time()
-    transcription = model.transcribe(STTint16, language="English")
+  
+    print(datarecup)
+    print("datarecup : ",type(datarecup))
+    print(datarecup.shape)
+    transcription = model.transcribe(datarecup, language="English")
     print("Whisper time : ", time.time() - startWhisper)
-    GOSAIcommands.comparaison(transcription)
-    print("transcription : ",transcription["text"])
-    counter +=1
-    
-    if len(GOSAIcommands.modeactive) != 0 :
-        print("Application mode : ",GOSAIcommands.modeactive)
-        #VocalReturn.speak(GOSAIcommands.modeactive[1], GOSAIcommands.modeactive[0])
-
-        Info["Mode"] = GOSAIcommands.modeactive[1] + " " + GOSAIcommands.modeactive[0]
-        SendMessage = True
+    if debug == True :
+        return transcription["text"]
+    else :
+        GOSAIcommands.comparaison(transcription)
+        print("transcription : ",transcription["text"])
+        #counter +=1
         
-    print("process time : ", time.time() - startWhisper)
-    GOSAIcommands.modeactive = []
-    #print("STTRun False -> True")
+        if len(GOSAIcommands.modeactive) != 0 :
+            print("Application mode : ",GOSAIcommands.modeactive)
+            #VocalReturn.speak(GOSAIcommands.modeactive[1], GOSAIcommands.modeactive[0])
+
+            Info["Mode"] = GOSAIcommands.modeactive[1] + " " + GOSAIcommands.modeactive[0]
+            SendMessage = True
+            
+        print("process time : ", time.time() - startWhisper)
+        GOSAIcommands.modeactive = []
+        #print("STTRun False -> True")
 
     
 
@@ -234,9 +244,11 @@ async def websocket_endpoint(websocket: WebSocket):
     compteur = 0 
 
     await websocket.accept()
-    # t1 = Thread(target=VoiceCommands, args=(device, q, autocalibration,))
 
-    # t1.start()
+
+    t1 = Thread(target=VoiceCommands, args=(device, q, autocalibration,))
+
+    t1.start()
 
 
 
@@ -258,7 +270,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     #print("received time : ", float(data)/1000)
                     #print("time server : ", time.time())
                     #delay_time = time.time() - float(data)/1000
-                    #Write this delay_time in a file delay.txt
+                    #Write this delay_time in a file delay.txt*
+
+
+
             compteur += 1 
             if time.time()  - start >= 60 :  
                     print("temps : ", time.time()-start, "    compteur : " , compteur)
@@ -271,29 +286,40 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
                     
-            else : 
+            # O else : 
 
-                bytes = data['bytes']
-                
-                #print("bytes : ",bytes)
-                #bytes = data['bytes']
-                #float32array = array.array('f', bytes).tolist()
-                float32buffer = np.frombuffer(bytes, dtype=np.float32)
-                print(float32buffer.size)
-                databuffer = np.append(databuffer,float32buffer)
-
-                if databuffer.size > nbsamplefor1sec:
-
-                    datafor1sec = databuffer[:nbsamplefor1sec]
-                    #print("queue size : ",q.qsize())
-                    q.put((datafor1sec, time.time()))
-                    #print("echantillon envoyé pour queue")
-                    databuffer = databuffer[nbsamplefor1sec:]
+            bytes = data['bytes']
             
+            #print("bytes : ",bytes)
+            #bytes = data['bytes']
+            #float32array = array.array('f', bytes).tolist()
+            float32buffer = np.frombuffer(bytes, dtype=np.float32)
             
+            databuffer = np.append(databuffer,float32buffer)
+
+            if databuffer.size > nbsamplefor1sec:
+
+                datafor1sec = databuffer[:nbsamplefor1sec]
+                #print("queue size : ",q.qsize())
+                q.put((datafor1sec, time.time()))
+                #print("echantillon envoyé pour queue")
+                databuffer = databuffer[nbsamplefor1sec:]
+        
+
+ 
 
 
 if __name__ == '__main__':
+
+    
+
+
+
+
+
+
+    
+
 
     uvicorn.run('main:app', host='192.168.1.51', reload=True, log_level='info',
                 ssl_keyfile=os.path.join(root, 'cert/key.pem'),

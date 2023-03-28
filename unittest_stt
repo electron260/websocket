@@ -1,0 +1,59 @@
+import unittest
+import librosa
+import queue
+from main import SpeechToText
+import time  
+import numpy as np
+import torchaudio
+import whisper 
+
+device = "cpu"
+fp16= False
+LANGUAGE = "English"
+model = whisper.load_model("small.en", device = device)
+
+
+ 
+class TestComparaison(unittest.TestCase):
+    def pre_run(self):
+        self.q = queue.Queue()
+        audio_input, sampling_rate = torchaudio.load("test.wav")
+       
+        print(type(audio_input))
+
+        print(audio_input.squeeze(0))
+        audio_input = audio_input.squeeze(0)
+
+        
+    
+        audio_input = audio_input.numpy()
+        print(audio_input)
+
+       
+
+  
+        print(audio_input[0:100])
+        for i in range(4):
+            test = audio_input[i*44100:(i+1)*44100], time.time()
+            self.q.put( test)
+        self.wuwdata = self.q.get()
+        print(self.wuwdata)
+
+        transcript = model.transcribe(audio_input, language = LANGUAGE, fp16 = fp16)
+        print(transcript['text'])
+       
+
+
+    def test_comparaison(self):
+        transcription = "Start the triangle"
+        self.assertEqual(SpeechToText(self.q, self.wuwdata, resample = True, debug = True), transcription)
+
+
+
+
+if __name__ == '__main__':
+
+    
+    Test = TestComparaison()
+    Test.pre_run()
+    Test.test_comparaison()
