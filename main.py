@@ -36,7 +36,7 @@ model = whisper.load_model("small.en", device = device)
 GOSAIcommands = Commands()
 #import Vocal feedbacks
 
-nbsamplefor1sec = 16000
+nbsamplefor1sec = 44100
 
 #sensibility
 silence_treshold=0.0
@@ -174,7 +174,7 @@ def SpeechToText(q : queue.Queue, wuwdata, counter : int):
     
     if len(GOSAIcommands.modeactive) != 0 :
         print("Application mode : ",GOSAIcommands.modeactive)
-        VocalReturn.speak(GOSAIcommands.modeactive[1], GOSAIcommands.modeactive[0])
+        #VocalReturn.speak(GOSAIcommands.modeactive[1], GOSAIcommands.modeactive[0])
 
         Info["Mode"] = GOSAIcommands.modeactive[1] + " " + GOSAIcommands.modeactive[0]
         SendMessage = True
@@ -261,7 +261,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     #Write this delay_time in a file delay.txt
             compteur += 1 
             if time.time()  - start >= 60 :  
-                    print("temps : ", time.time()-start, "    competeur : " , compteur)
+                    print("temps : ", time.time()-start, "    compteur : " , compteur)
                     f.write(str(compteur)+'\n')#+','+str(time.time()-start_recording)+'\n')
                     start += 60
                     compteur = 0

@@ -1,4 +1,4 @@
-const sampleRate = 16000;
+const sampleRate = 44100;
 
 
 
